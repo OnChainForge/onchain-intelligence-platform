@@ -1,0 +1,734 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Wallet Risk Monitor · Ethereum</title>
+  <style>
+:root {
+  --bg: #0b0d10;
+  --panel: #12161c;
+  --panel-border: #1f2530;
+  --panel-border-soft: #1a1f28;
+  --text: #e7ebee;
+  --muted: #838d99;
+  --muted-dim: #596270;
+
+  --accent: #37c98f;
+  --risk-low: #37c98f;
+  --risk-medium: #e0a940;
+  --risk-high: #e2574f;
+
+  --radius: 10px;
+  --radius-sm: 7px;
+
+  --font-body: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+.stage {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  padding: 32px 20px;
+}
+
+.panel {
+  width: 100%;
+  max-width: 620px;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px 16px;
+}
+
+.status__left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.status__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.status.is-offline .status__dot { background: var(--muted-dim); animation: none; }
+.status.is-offline .status__left { color: var(--risk-high); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.status__updated {
+  font-size: 12px;
+  color: var(--muted-dim);
+}
+
+.alerts {
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.alert-card {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-left: 2px solid var(--risk-medium);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+}
+
+.alert-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.alert-card__wallet {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.alert-card__score {
+  font-size: 12px;
+  color: var(--risk-medium);
+  font-weight: 650;
+  flex-shrink: 0;
+}
+
+.alert-card__message {
+  margin: 6px 0 10px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.alert-card__bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.alert-card__time {
+  font-size: 11px;
+  color: var(--muted-dim);
+}
+
+.btn-quiet {
+  background: none;
+  border: 1px solid var(--panel-border);
+  color: var(--muted);
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.btn-quiet:hover { border-color: var(--muted); color: var(--text); }
+
+.add-toggle {
+  width: 100%;
+  text-align: left;
+  background: var(--panel);
+  border: 1px dashed var(--panel-border);
+  color: var(--muted);
+  font-size: 13px;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  margin-bottom: 16px;
+}
+
+.add-toggle:hover { color: var(--text); border-color: var(--muted-dim); }
+
+.add-form {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  margin-bottom: 16px;
+  display: none;
+}
+
+.add-form.is-open { display: block; }
+
+.add-form__row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.add-form input {
+  background: #0d1015;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 13px;
+  padding: 10px 12px;
+  outline: none;
+}
+
+.add-form input[name="address"] {
+  flex: 2;
+  font-family: var(--font-mono);
+  min-width: 0;
+}
+
+.add-form input[name="label"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.add-form input:focus { border-color: var(--accent); }
+.add-form input.is-invalid { border-color: var(--risk-high); }
+
+.add-form__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.add-form__hint {
+  font-size: 11px;
+  color: var(--muted-dim);
+  transition: color 0.2s ease;
+}
+
+.add-form__hint.is-invalid { color: var(--risk-high); }
+.add-form__hint.is-success { color: var(--risk-low); }
+
+.btn-primary {
+  background: var(--accent);
+  color: #06130d;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 18px;
+  cursor: pointer;
+}
+
+.btn-primary:disabled {
+  background: var(--panel-border);
+  color: var(--muted-dim);
+  cursor: not-allowed;
+}
+
+.wallets { border: 1px solid var(--panel-border); border-radius: var(--radius); overflow: hidden; }
+
+.wallets__empty {
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--muted-dim);
+  font-size: 13px;
+  background: var(--panel);
+}
+
+.wrow {
+  background: var(--panel);
+  border-bottom: 1px solid var(--panel-border-soft);
+  padding: 14px 18px;
+}
+
+.wrow:last-child { border-bottom: none; }
+
+.wrow.is-new {
+  animation: arrive 1.6s ease-out;
+}
+
+@keyframes arrive {
+  0% { background: rgba(55, 201, 143, 0.14); }
+  100% { background: var(--panel); }
+}
+
+.wrow__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wrow__identity { min-width: 0; }
+
+.wrow__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wrow__address {
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.wrow__address a { color: var(--muted); text-decoration: none; }
+.wrow__address a:hover { color: var(--accent); text-decoration: underline; }
+
+.wrow__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.wrow__meter {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wrow__track {
+  flex: 1;
+  height: 6px;
+  border-radius: 100px;
+  background: var(--panel-border);
+  overflow: hidden;
+}
+
+.wrow__fill { height: 100%; border-radius: 100px; }
+.fill-low { background: var(--risk-low); }
+.fill-medium { background: var(--risk-medium); }
+.fill-high { background: var(--risk-high); }
+
+.wrow__score {
+  font-size: 13px;
+  font-weight: 650;
+  width: 32px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.score-low { color: var(--risk-low); }
+.score-medium { color: var(--risk-medium); }
+.score-high { color: var(--risk-high); }
+
+.wrow__meta {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--muted-dim);
+}
+
+.wrow__toggle {
+  background: none;
+  border: none;
+  color: var(--muted-dim);
+  font-size: 11px;
+  padding: 0;
+  margin-top: 6px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--panel-border);
+}
+
+.wrow__toggle:hover { color: var(--muted); }
+
+.wrow__history {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--panel-border-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.snap {
+  display: flex;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.snap__score { width: 32px; flex-shrink: 0; font-weight: 650; }
+.snap__body { color: var(--muted); line-height: 1.4; }
+.snap__time { color: var(--muted-dim); font-size: 11px; }
+
+.history-empty { font-size: 12px; color: var(--muted-dim); }
+
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+  <main class="stage">
+    <div class="panel">
+
+      <div class="status" id="status">
+        <div class="status__left">
+          <span class="status__dot" id="status-dot"></span>
+          <span id="status-text">Connecting…</span>
+        </div>
+        <span class="status__updated" id="status-updated"></span>
+      </div>
+
+      <div class="alerts" id="alerts"></div>
+
+      <button type="button" class="add-toggle" id="add-toggle">+ Track a wallet</button>
+
+      <form class="add-form" id="add-form" novalidate>
+        <div class="add-form__row">
+          <input type="text" name="address" placeholder="0x…" autocomplete="off" spellcheck="false" />
+          <input type="text" name="label" placeholder="Label (optional)" autocomplete="off" />
+        </div>
+        <div class="add-form__actions">
+          <span class="add-form__hint" id="add-hint">Paste a valid Ethereum address (0x + 40 hex characters).</span>
+          <button type="submit" class="btn-primary" id="add-submit" disabled>Track</button>
+        </div>
+      </form>
+
+      <div class="wallets" id="wallets">
+        <p class="wallets__empty" id="wallets-empty">No wallets tracked yet.</p>
+      </div>
+
+    </div>
+  </main>
+
+  <script>
+const API_BASE = "http://localhost:8003";
+const POLL_INTERVAL_MS = 15000;
+const ETHERSCAN_BASE = "https://etherscan.io";
+const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
+
+const el = {
+  statusRoot: document.getElementById("status"),
+  statusText: document.getElementById("status-text"),
+  statusUpdated: document.getElementById("status-updated"),
+  alerts: document.getElementById("alerts"),
+  addToggle: document.getElementById("add-toggle"),
+  addForm: document.getElementById("add-form"),
+  addHint: document.getElementById("add-hint"),
+  addSubmit: document.getElementById("add-submit"),
+  wallets: document.getElementById("wallets"),
+  walletsEmpty: document.getElementById("wallets-empty"),
+};
+
+let lastUpdatedAt = null;
+let expandedWalletId = null;
+const historyCache = new Map();
+let confirmingRemoveId = null;
+let confirmTimeout = null;
+let lastAddedWalletAddress = null;
+
+function truncateAddress(addr) {
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+}
+
+function etherscanAddressLink(address) {
+  return `<a href="${ETHERSCAN_BASE}/address/${address}" target="_blank" rel="noopener noreferrer" title="View on Etherscan">${truncateAddress(address)}</a>`;
+}
+
+function timeAgo(date) {
+  if (!date) return "";
+  const seconds = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
+  if (seconds < 5) return "updated just now";
+  if (seconds < 60) return `updated ${seconds}s ago`;
+  return `updated ${Math.round(seconds / 60)}m ago`;
+}
+
+function relativeTime(isoString) {
+  if (!isoString) return "not scored yet";
+  const seconds = Math.max(0, Math.round((Date.now() - new Date(isoString).getTime()) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.round(seconds / 3600)}h ago`;
+  return `${Math.round(seconds / 86400)}d ago`;
+}
+
+function tier(score) {
+  if (score >= 60) return "high";
+  if (score >= 30) return "medium";
+  return "low";
+}
+
+function setOnline(isOnline) {
+  el.statusRoot.classList.toggle("is-offline", !isOnline);
+  el.statusText.textContent = isOnline ? "Live" : "Disconnected — retrying…";
+}
+
+el.addToggle.addEventListener("click", () => {
+  el.addForm.classList.toggle("is-open");
+});
+
+el.addForm.address.addEventListener("input", () => {
+  const value = el.addForm.address.value.trim();
+  const isValid = ADDRESS_REGEX.test(value);
+  const isEmpty = value.length === 0;
+  el.addSubmit.disabled = !isValid;
+  el.addForm.address.classList.toggle("is-invalid", !isValid && !isEmpty);
+  el.addHint.classList.remove("is-success");
+  el.addHint.classList.toggle("is-invalid", !isValid && !isEmpty);
+  el.addHint.textContent = !isValid && !isEmpty
+    ? "That doesn't look like a valid address."
+    : "Paste a valid Ethereum address (0x + 40 hex characters).";
+});
+
+el.addForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  // Guard against double-submit (double click, Enter + click, etc.):
+  // once the button is disabled we're already mid-request, so ignore
+  // any further submit events until this one finishes.
+  if (el.addSubmit.disabled) return;
+
+  const address = el.addForm.address.value.trim();
+  const label = el.addForm.label.value.trim();
+  if (!ADDRESS_REGEX.test(address)) return;
+
+  el.addSubmit.disabled = true;
+  el.addSubmit.textContent = "Tracking…";
+
+  try {
+    const res = await fetch(`${API_BASE}/wallets/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address, label: label || null }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      el.addHint.classList.remove("is-success");
+      el.addHint.classList.add("is-invalid");
+      el.addHint.textContent = body.detail || "Couldn't add this wallet. Please try again.";
+      return;
+    }
+
+    // Success: show clear confirmation before closing the form, so it's
+    // never ambiguous whether the wallet was actually added.
+    lastAddedWalletAddress = address;
+    el.addHint.classList.remove("is-invalid");
+    el.addHint.classList.add("is-success");
+    el.addHint.textContent = "✓ Wallet added successfully.";
+
+    await poll();
+
+    setTimeout(() => {
+      el.addForm.reset();
+      el.addForm.classList.remove("is-open");
+      el.addHint.classList.remove("is-success");
+      el.addHint.textContent = "Paste a valid Ethereum address (0x + 40 hex characters).";
+    }, 1500);
+  } catch (err) {
+    el.addHint.classList.remove("is-success");
+    el.addHint.classList.add("is-invalid");
+    el.addHint.textContent = "Couldn't reach the server. Please try again.";
+  } finally {
+    el.addSubmit.textContent = "Track";
+    el.addSubmit.disabled = false;
+  }
+});
+
+async function handleRemove(walletId, button) {
+  if (confirmingRemoveId !== walletId) {
+    clearTimeout(confirmTimeout);
+    confirmingRemoveId = walletId;
+    button.textContent = "Confirm removal";
+    confirmTimeout = setTimeout(() => {
+      confirmingRemoveId = null;
+      button.textContent = "Stop tracking";
+    }, 3000);
+    return;
+  }
+
+  clearTimeout(confirmTimeout);
+  confirmingRemoveId = null;
+  button.disabled = true;
+  button.textContent = "Removing…";
+
+  try {
+    await fetch(`${API_BASE}/wallets/${walletId}`, { method: "DELETE" });
+    await poll();
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = "Stop tracking";
+  }
+}
+
+async function handleResolve(alertId, card) {
+  try {
+    await fetch(`${API_BASE}/alerts/${alertId}/resolve`, { method: "PATCH" });
+    card.style.opacity = "0";
+    setTimeout(() => poll(), 200);
+  } catch (err) {
+    // silently retry on next poll cycle
+  }
+}
+
+async function toggleHistory(walletId, container) {
+  const isOpen = expandedWalletId === walletId;
+  expandedWalletId = isOpen ? null : walletId;
+  renderWallets(currentWallets);
+
+  if (!isOpen && !historyCache.has(walletId)) {
+    try {
+      const res = await fetch(`${API_BASE}/wallets/${walletId}/history`);
+      const history = res.ok ? await res.json() : [];
+      historyCache.set(walletId, history);
+      renderWallets(currentWallets);
+    } catch (err) {
+      historyCache.set(walletId, []);
+    }
+  }
+}
+
+let currentWallets = [];
+
+function renderAlerts(alerts, walletsById) {
+  el.alerts.innerHTML = "";
+  alerts.forEach((alert) => {
+    const wallet = walletsById.get(alert.wallet_id);
+    const card = document.createElement("div");
+    card.className = "alert-card";
+    card.style.transition = "opacity 0.2s ease";
+    card.innerHTML = `
+      <div class="alert-card__top">
+        <span class="alert-card__wallet">${wallet ? etherscanAddressLink(wallet.address) : "Wallet removed"}</span>
+        <span class="alert-card__score">Score ${alert.score_at_alert.toFixed(0)}</span>
+      </div>
+      <p class="alert-card__message">${alert.message}</p>
+      <div class="alert-card__bottom">
+        <span class="alert-card__time">${relativeTime(alert.created_at)}</span>
+      </div>
+    `;
+    const resolveBtn = document.createElement("button");
+    resolveBtn.className = "btn-quiet";
+    resolveBtn.textContent = "Resolve";
+    resolveBtn.addEventListener("click", () => handleResolve(alert.id, card));
+    card.querySelector(".alert-card__bottom").append(resolveBtn);
+    el.alerts.append(card);
+  });
+}
+
+function renderWallets(wallets) {
+  currentWallets = wallets;
+  el.walletsEmpty.hidden = wallets.length > 0;
+  if (wallets.length === 0) {
+    el.wallets.innerHTML = "";
+    el.wallets.append(el.walletsEmpty);
+    return;
+  }
+
+  el.wallets.innerHTML = "";
+  wallets.forEach((wallet) => {
+    const t = tier(wallet.current_score);
+    const row = document.createElement("div");
+    row.className = "wrow";
+    if (wallet.address === lastAddedWalletAddress) {
+      row.classList.add("is-new");
+      lastAddedWalletAddress = null; // only highlight once
+    }
+
+    row.innerHTML = `
+      <div class="wrow__top">
+        <div class="wrow__identity">
+          <div class="wrow__name">${wallet.label || truncateAddress(wallet.address)}</div>
+          <div class="wrow__address">${etherscanAddressLink(wallet.address)}</div>
+        </div>
+        <div class="wrow__actions"></div>
+      </div>
+      <div class="wrow__meter">
+        <div class="wrow__track"><div class="wrow__fill fill-${t}" style="width:${wallet.current_score}%"></div></div>
+        <span class="wrow__score score-${t}">${Math.round(wallet.current_score)}</span>
+      </div>
+      <div class="wrow__meta">Last scored ${relativeTime(wallet.last_scored_at)}</div>
+      <button type="button" class="wrow__toggle">${expandedWalletId === wallet.id ? "Hide history" : "View score history"}</button>
+    `;
+
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "btn-quiet";
+    removeBtn.textContent = confirmingRemoveId === wallet.id ? "Confirm removal" : "Stop tracking";
+    removeBtn.addEventListener("click", () => handleRemove(wallet.id, removeBtn));
+    row.querySelector(".wrow__actions").append(removeBtn);
+
+    row.querySelector(".wrow__toggle").addEventListener("click", () => toggleHistory(wallet.id, row));
+
+    if (expandedWalletId === wallet.id) {
+      const historyBlock = document.createElement("div");
+      historyBlock.className = "wrow__history";
+      const snapshots = historyCache.get(wallet.id);
+
+      if (!snapshots) {
+        historyBlock.innerHTML = `<span class="history-empty">Loading…</span>`;
+      } else if (snapshots.length === 0) {
+        historyBlock.innerHTML = `<span class="history-empty">No score history yet.</span>`;
+      } else {
+        snapshots.slice(0, 10).forEach((snap) => {
+          const snapTier = tier(snap.score);
+          const line = document.createElement("div");
+          line.className = "snap";
+          line.innerHTML = `
+            <span class="snap__score score-${snapTier}">${Math.round(snap.score)}</span>
+            <div>
+              <div class="snap__body">${snap.reasoning || "No notable activity patterns."}</div>
+              <div class="snap__time">${relativeTime(snap.created_at)}</div>
+            </div>
+          `;
+          historyBlock.append(line);
+        });
+      }
+
+      row.append(historyBlock);
+    }
+
+    el.wallets.append(row);
+  });
+}
+
+async function poll() {
+  try {
+    const [walletsRes, alertsRes] = await Promise.all([
+      fetch(`${API_BASE}/wallets/`),
+      fetch(`${API_BASE}/alerts/?resolved=false`),
+    ]);
+
+    if (!walletsRes.ok || !alertsRes.ok) throw new Error("Bad response");
+
+    const wallets = await walletsRes.json();
+    const alerts = await alertsRes.json();
+    const walletsById = new Map(wallets.map((w) => [w.id, w]));
+
+    lastUpdatedAt = new Date();
+    setOnline(true);
+    renderAlerts(alerts, walletsById);
+    renderWallets(wallets);
+    el.statusUpdated.textContent = timeAgo(lastUpdatedAt);
+  } catch (err) {
+    setOnline(false);
+  }
+}
+
+poll();
+setInterval(poll, POLL_INTERVAL_MS);
+setInterval(() => {
+  el.statusUpdated.textContent = timeAgo(lastUpdatedAt);
+}, 1000);
+  </script>
+</body>
+</html>
