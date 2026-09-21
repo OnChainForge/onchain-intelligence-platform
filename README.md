@@ -1,46 +1,91 @@
-# Wallet Activity Analyzer
+# On-Chain Intelligence Platform
 
-An Ethereum wallet behavior profiling microservice that scans bounded block ranges, summarizes historical transfer activity, tracks total ETH moved, and identifies contract interaction ratios using raw RPC endpoints.
-
-# Wallet Activity Analyzer
-
-An Ethereum wallet behavior profiling microservice that scans bounded block ranges, summarizes historical transfer activity, tracks total ETH moved, and identifies contract interaction ratios using raw RPC endpoints.
-
-![Wallet Activity Analyzer screenshot](docs/screenshot.png)
-
-**Live demo:** _pending deployment_  
-**Video walkthrough:** _pending_
+Wallet risk scoring platform: register Ethereum addresses to monitor, get an explainable 0-100 risk score based on recent on-chain activity, and receive alerts when a wallet crosses a risk threshold.
 
 ## Problem
 
-Querying wallet activity directly from raw RPC nodes across multiple block ranges requires expensive loops and leads to timeout errors on free-tier providers. Without bounded scanning logic and structured aggregations, analyzing recent wallet history requires heavy indexing infrastructure.
+Assessing whether a wallet is "risky" (bot activity, contract-interaction farming, unusual volume spikes) typically requires either expensive third-party intelligence APIs or manual on-chain digging. There's no lightweight, transparent way to continuously track a watchlist of wallets and get an explainable score.
 
 ## Solution
 
-A Python service powered by Web3.py and FastAPI that:
-
-1. Connects to Ethereum mainnet via Web3.py HTTP Provider
-2. Normalizes input addresses using `Web3.to_checksum_address` validation
-3. Scans block ranges bounded by `LOOKBACK_BLOCKS` to prevent RPC rate-limit throttling
-4. Aggregates activity metrics: transaction counts, total ETH transferred, and smart contract interaction detection
-5. Exposes REST endpoints for instant wallet behavior profiling
+Users register wallets to monitor. A background scheduler periodically pulls each wallet's recent activity (transaction frequency, volume, % of interactions with contracts) and computes a risk score using a transparent, rule-based heuristic — no black-box ML. When a wallet's score crosses a configurable threshold (60), an alert is generated.
 
 ## Architecture
 
-Client / API Request (/wallet/{address}/activity)│▼FastAPI Service Layer│▼Web3.py Client (app/blockchain.py)│▼Ethereum Mainnet RPC (Infura/Alchemy)│┌────────────────────┴────────────────────┐▼                                         ▼Block Scanning Loop             Transaction Normalization(from_block -> to_block)        (wei -> ether, checksum validation)│                                         │└────────────────────┬────────────────────┘▼Aggregated Metrics Summary JSON(tx_count, total_value_eth, contract_interactions)
-- **Backend**: Python, FastAPI, Pydantic v2 (pydantic-settings), Web3.py
-- **RPC Provider**: Ethereum Mainnet (Infura / Alchemy / Anvil)
+┌────────────────┐ ┌──────────────────┐ ┌─────────────────┐
+│ Frontend │ │ FastAPI REST │ │ SQLite (WAL) │
+│ Add wallet form │─────▶│ /wallets │─────▶│ wallets table │
+│ (live validation)│ │ /alerts │ │ scores table │
+└────────────────┘ └──────────────────┘ └────────┬────────┘
+│
+┌──────────────────┐ │
+│ scheduler.py │ │
+│ periodic background│◀──────────────┘
+│ scoring loop │
+└────────┬─────────────┘
+│
+▼
+┌──────────────────┐ ┌─────────────────┐
+│ blockchain.py │ │ scoring.py │
+│ get_wallet_activity│─────▶│ calculate_score │
+│ (via Infura RPC) │ │ (heuristic, 0-100) │
+└──────────────────┘ └────────┬────────┘
+│ score ≥ 60?
+▼
+┌─────────────────┐
+│ Alert created │
+└─────────────────┘
+
 
 ## Stack
 
-Python · FastAPI · Web3.py · Pydantic · Ethereum RPC
+- **Backend:** FastAPI, SQLAlchemy, SQLite (WAL mode)
+- **Blockchain:** Web3.py via Infura RPC
+- **Scoring:** custom rule-based heuristic (`scoring.py`), no ML
+- **Scheduling:** background periodic task (`scheduler.py`)
+- **Frontend:** Vanilla HTML/CSS/JS, dark theme, polling-based
+- **Config:** pydantic-settings (`.env`)
 
 ## Running locally
 
+Backend:
 ```bash
+cd onchain-intelligence-platform
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env  # fill in ETHEREUM_RPC_URL
+cp .env.example .env   # fill in your Infura API key
 uvicorn app.main:app --reload --port 8003
-APIMethodEndpointDescriptionGET/healthService health status and RPC connectivity checkGET/wallet/{address}/activityReturns transaction metrics and contract interaction breakdownTechnical decisionsBounded Lookback Protection: Enforced strict lookback_blocks limits in Settings to prevent infinite loop execution and avoid rate-limiting on free-tier RPC providers.Checksum Normalization: Standardized address inputs via Web3.to_checksum_address to prevent string mismatch bugs during from/to address comparison.Contract Payload Identification: Detected smart contract calls by evaluating transaction payload inputs against empty hex values (0x / b"").Challenges & learningsHandled RPC execution timeouts on heavy block requests by catching block-level fetch exceptions gracefully without breaking the scan loop.Optimized conversion efficiency by handling wei-to-ether transformations directly using w3.from_wei prior to float aggregation.LicenseMITO
+```
+
+Frontend:
+```bash
+cd frontend
+python3 -m http.server 5503
+```
+
+## API
+
+| Method | Endpoint              | Description                              |
+|--------|------------------------|--------------------------------------------|
+| GET    | `/wallets/`            | List monitored wallets                     |
+| POST   | `/wallets/`             | Register a new wallet to monitor           |
+| GET    | `/wallets/{address}`   | Get a wallet's details and score history   |
+| GET    | `/alerts/`              | List generated risk alerts                 |
+| GET    | `/health`               | Health check                               |
+
+## Technical decisions
+
+- **Rule-based scoring over ML:** heuristic scoring (weighted combination of tx frequency, volume, and contract-interaction ratio) keeps the score fully explainable — each component's contribution can be shown to the user, unlike a black-box model.
+- **Periodic background scoring vs on-demand:** wallets are re-scored on a schedule so risk trends can be tracked over time (score history per wallet), rather than only reflecting a single snapshot.
+- **Threshold as config:** the 60-point alert threshold lives in `.env` for easy tuning without redeploying.
+- **SQLite over Postgres (local):** same constraint as the other projects — `psycopg2-binary` build issues on Python 3.14 locally. Postgres is planned for Render.
+
+## Challenges & learnings
+
+- Early version gave no visual confirmation when a wallet was successfully added — it looked like the request had silently failed even though it saved correctly. Fixed with a clear "✓ Wallet added successfully" message and a highlighted row for the newly added wallet.
+- Balancing the scoring heuristic weights took iteration: an early version over-weighted raw transaction count, flagging normal high-frequency DeFi users as risky. Rebalanced to weight contract-interaction ratio and volume more heavily.
+
+## License
+
+MIT
