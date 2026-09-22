@@ -2,6 +2,8 @@
 
 Wallet risk scoring platform: register Ethereum addresses to monitor, get an explainable 0-100 risk score based on recent on-chain activity, and receive alerts when a wallet crosses a risk threshold.
 
+![On-Chain Intelligence Platform screenshot](docs/screenshot.png)
+
 ## Problem
 
 Assessing whether a wallet is "risky" (bot activity, contract-interaction farming, unusual volume spikes) typically requires either expensive third-party intelligence APIs or manual on-chain digging. There's no lightweight, transparent way to continuously track a watchlist of wallets and get an explainable score.
